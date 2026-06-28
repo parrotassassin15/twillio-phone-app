@@ -30,7 +30,6 @@ import {
   sendDtmf as twilioSendDtmf,
   getCallSid,
   onCallInvite,
-  onCancelledCallInvite,
   registerDevice,
   setDeviceId as twilioSetDeviceId,
 } from '../services/twilioService';
@@ -143,18 +142,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       const from = invite.getFrom() ?? 'Unknown';
       setRemoteNumber(from);
       startRing();
-    });
 
-    const offCancelled = onCancelledCallInvite(() => {
-      stopRing();
-      setPendingInvite(null);
-      setStatus('idle');
-      setRemoteNumber('');
+      invite.once(CallInvite.Event.Cancelled, () => {
+        stopRing();
+        setPendingInvite(null);
+        setStatus('idle');
+        setRemoteNumber('');
+      });
     });
 
     return () => {
       offInvite();
-      offCancelled();
     };
   }, [startRing, stopRing]);
 

@@ -44,10 +44,6 @@ export function onCallInvite(handler: (invite: CallInvite) => void): () => void 
   return () => voice.off(Voice.Event.CallInvite, handler);
 }
 
-export function onCancelledCallInvite(handler: () => void): () => void {
-  voice.on(Voice.Event.CancelledCallInvite, handler);
-  return () => voice.off(Voice.Event.CancelledCallInvite, handler);
-}
 
 export async function makeCall(to: string, callerId: string): Promise<Call> {
   const token = await getToken();

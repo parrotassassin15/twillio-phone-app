@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -12,6 +14,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../contexts/AuthContext';
+import { Config } from '../config';
+
+const VERSION = '0.1.0';
 
 const C = {
   bg:      '#0a1628',
@@ -21,6 +26,7 @@ const C = {
   text:    '#d0d0d0',
   muted:   '#85888e',
   input:   '#0e1e35',
+  ms:      '#2f2f2f',
 };
 
 export function LoginScreen() {
@@ -29,6 +35,7 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
+  const [msLoading, setMsLoading] = useState(false);
   const [showPw, setShowPw]     = useState(false);
 
   const handleLogin = async () => {
@@ -47,6 +54,19 @@ export function LoginScreen() {
     }
   };
 
+  const handleMicrosoftSSO = async () => {
+    setError(null);
+    setMsLoading(true);
+    try {
+      const url = `${Config.BASE_URL}/api/auth/microsoft?redirect_uri=lorikeet%3A%2F%2Fauth%2Fcallback`;
+      await Linking.openURL(url);
+    } catch {
+      setError('Could not open Microsoft sign-in. Please try again.');
+    } finally {
+      setMsLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView
@@ -55,11 +75,13 @@ export function LoginScreen() {
 
         {/* Branding */}
         <View style={s.brand}>
-          <View style={s.logoWrap}>
-            <Icon name="bird" size={40} color={C.accent} />
-          </View>
-          <Text style={s.appName}>Lorikeet</Text>
-          <Text style={s.tagline}>Softphone</Text>
+          <Image
+            source={require('../assets/ls_logo.png')}
+            style={s.logo}
+            resizeMode="contain"
+          />
+          <Text style={s.appName}>LS Phone</Text>
+          <Text style={s.tagline}>v{VERSION}</Text>
         </View>
 
         {/* Card */}
@@ -78,7 +100,7 @@ export function LoginScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="next"
-              editable={!loading}
+              editable={!loading && !msLoading}
             />
           </View>
 
@@ -96,7 +118,7 @@ export function LoginScreen() {
                 autoCorrect={false}
                 returnKeyType="go"
                 onSubmitEditing={handleLogin}
-                editable={!loading}
+                editable={!loading && !msLoading}
               />
               <TouchableOpacity
                 style={s.eyeBtn}
@@ -114,13 +136,36 @@ export function LoginScreen() {
           {error ? <Text style={s.error}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[s.btn, loading && s.btnDisabled]}
+            style={[s.btn, (loading || msLoading) && s.btnDisabled]}
             onPress={handleLogin}
-            disabled={loading}
+            disabled={loading || msLoading}
             accessibilityLabel="Sign in">
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
               : <Text style={s.btnText}>Sign in</Text>}
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={s.divider}>
+            <View style={s.divLine} />
+            <Text style={s.divText}>or</Text>
+            <View style={s.divLine} />
+          </View>
+
+          {/* Microsoft SSO */}
+          <TouchableOpacity
+            style={[s.msBtn, (loading || msLoading) && s.btnDisabled]}
+            onPress={handleMicrosoftSSO}
+            disabled={loading || msLoading}
+            accessibilityLabel="Sign in with Microsoft">
+            {msLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <View style={s.msInner}>
+                <Icon name="microsoft" size={18} color="#fff" style={s.msIcon} />
+                <Text style={s.msBtnText}>Sign in with Microsoft</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -134,17 +179,7 @@ const s = StyleSheet.create({
   kav:  { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
 
   brand: { alignItems: 'center', marginBottom: 36 },
-  logoWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: 'rgba(186,86,99,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(186,86,99,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
+  logo: { width: 90, height: 90, marginBottom: 14 },
   appName:  { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: 1 },
   tagline:  { color: C.muted, fontSize: 13, marginTop: 2 },
 
@@ -197,4 +232,25 @@ const s = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginVertical: -4,
+  },
+  divLine: { flex: 1, height: 1, backgroundColor: C.border },
+  divText: { color: C.muted, fontSize: 12 },
+
+  msBtn: {
+    backgroundColor: C.ms,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  msInner: { flexDirection: 'row', alignItems: 'center' },
+  msIcon:  { marginRight: 8 },
+  msBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

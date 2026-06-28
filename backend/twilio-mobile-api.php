@@ -235,6 +235,58 @@ switch ($action) {
         echo json_encode(['success' => true, 'leads' => $leads]);
         break;
 
+    // ── Contacts ──────────────────────────────────────────────────────────
+    case 'contacts':
+        $conn = getDb();
+        if (!$conn) { echo json_encode(['success' => false, 'error' => 'DB error']); exit; }
+        $search = trim($_POST['search'] ?? '');
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $s = $conn->prepare("SELECT id,name,phone,email,company,notes,created_at FROM contacts WHERE name LIKE ? OR phone LIKE ? OR email LIKE ? OR company LIKE ? ORDER BY name ASC LIMIT 50");
+            $s->bind_param('ssss', $like, $like, $like, $like);
+        } else {
+            $s = $conn->prepare("SELECT id,name,phone,email,company,notes,created_at FROM contacts ORDER BY name ASC LIMIT 100");
+        }
+        $s->execute(); $r = $s->get_result();
+        $contacts = [];
+        while ($row = $r->fetch_assoc()) { $contacts[] = $row; }
+        $s->close(); $conn->close();
+        echo json_encode(['success' => true, 'contacts' => $contacts]);
+        break;
+
+    case 'contact_save':
+        $conn = getDb();
+        if (!$conn) { echo json_encode(['success' => false, 'error' => 'DB error']); exit; }
+        $id      = (int)($_POST['id'] ?? 0);
+        $name    = trim($_POST['name']    ?? '');
+        $phone   = trim($_POST['phone']   ?? '');
+        $email   = trim($_POST['email']   ?? '');
+        $company = trim($_POST['company'] ?? '');
+        $notes   = trim($_POST['notes']   ?? '');
+        if (!$name) { echo json_encode(['success' => false, 'error' => 'name required']); exit; }
+        if ($id) {
+            $s = $conn->prepare("UPDATE contacts SET name=?,phone=?,email=?,company=?,notes=?,updated_at=NOW() WHERE id=?");
+            $s->bind_param('sssssi', $name, $phone, $email, $company, $notes, $id);
+        } else {
+            $s = $conn->prepare("INSERT INTO contacts (name,phone,email,company,notes,created_at,updated_at) VALUES (?,?,?,?,?,NOW(),NOW())");
+            $s->bind_param('sssss', $name, $phone, $email, $company, $notes);
+        }
+        $s->execute();
+        $newId = $id ?: (int)$conn->insert_id;
+        $s->close(); $conn->close();
+        echo json_encode(['success' => true, 'id' => $newId]);
+        break;
+
+    case 'contact_delete':
+        $conn = getDb();
+        if (!$conn) { echo json_encode(['success' => false, 'error' => 'DB error']); exit; }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) { echo json_encode(['success' => false, 'error' => 'id required']); exit; }
+        $s = $conn->prepare("DELETE FROM contacts WHERE id=?");
+        $s->bind_param('i', $id); $s->execute(); $s->close(); $conn->close();
+        echo json_encode(['success' => true]);
+        break;
+
     // ── Blind transfer ────────────────────────────────────────────────────
     case 'transfer':
         $callSid  = $_POST['call_sid']  ?? '';

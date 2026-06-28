@@ -184,6 +184,58 @@ export async function sendSms(to: string, body: string, from?: string): Promise<
   }
 }
 
+// ── Contacts ───────────────────────────────────────────────────────────────
+
+export type Contact = {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export async function fetchContacts(search?: string): Promise<Contact[]> {
+  const body: Record<string, string> = { action: 'contacts' };
+  if (search) body.search = search;
+  const data = await request<{ success: boolean; contacts: Contact[] }>(
+    '/api/twilio-mobile-api',
+    { body },
+  );
+  return data.contacts ?? [];
+}
+
+export async function saveContact(contact: {
+  id?: number;
+  name: string;
+  phone?: string;
+  email?: string;
+  company?: string;
+  notes?: string;
+}): Promise<number> {
+  const body: Record<string, string> = { action: 'contact_save', name: contact.name };
+  if (contact.id)      body.id      = String(contact.id);
+  if (contact.phone)   body.phone   = contact.phone;
+  if (contact.email)   body.email   = contact.email;
+  if (contact.company) body.company = contact.company;
+  if (contact.notes)   body.notes   = contact.notes;
+  const data = await request<{ success: boolean; id: number; error?: string }>(
+    '/api/twilio-mobile-api',
+    { body },
+  );
+  if (!data.success) throw new Error(data.error ?? 'Save failed');
+  return data.id;
+}
+
+export async function deleteContact(id: number): Promise<void> {
+  const data = await request<{ success: boolean; error?: string }>(
+    '/api/twilio-mobile-api',
+    { body: { action: 'contact_delete', id: String(id) } },
+  );
+  if (!data.success) throw new Error(data.error ?? 'Delete failed');
+}
+
 // ── Unread count ───────────────────────────────────────────────────────────
 
 export async function fetchUnreadCount(): Promise<number> {

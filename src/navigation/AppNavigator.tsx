@@ -1,8 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -16,6 +14,8 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { DialerScreen } from '../screens/DialerScreen';
 import { CallLogScreen } from '../screens/CallLogScreen';
 import { ExtensionsScreen } from '../screens/ExtensionsScreen';
+import { ContactsScreen } from '../screens/ContactsScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 
 const COLORS = {
   bg:       '#0a1628',
@@ -29,14 +29,6 @@ const COLORS = {
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
-  const { logout } = useAuth();
-
-  const confirmLogout = () =>
-    Alert.alert('Sign out', 'Sign out of Lorikeet?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: logout },
-    ]);
-
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -45,7 +37,9 @@ function MainTabs() {
             const icons: Record<string, string> = {
               Dialer:     'dialpad',
               Calls:      'phone-log',
+              Contacts:   'account-box-multiple-outline',
               Extensions: 'headset',
+              Settings:   'cog-outline',
             };
             return <Icon name={icons[route.name] ?? 'circle'} size={size} color={color} />;
           },
@@ -58,20 +52,12 @@ function MainTabs() {
           headerStyle:      { backgroundColor: COLORS.card },
           headerTintColor:  COLORS.text,
           headerTitleStyle: { color: COLORS.text, fontWeight: '700' },
-          headerRight: route.name === 'Extensions'
-            ? () => (
-                <TouchableOpacity
-                  onPress={confirmLogout}
-                  accessibilityLabel="Sign out"
-                  style={{ marginRight: 16 }}>
-                  <Icon name="logout" size={20} color={COLORS.text} />
-                </TouchableOpacity>
-              )
-            : undefined,
         })}>
         <Tab.Screen name="Dialer"     component={DialerScreen} />
         <Tab.Screen name="Calls"      component={CallLogScreen} />
+        <Tab.Screen name="Contacts"   component={ContactsScreen} />
         <Tab.Screen name="Extensions" component={ExtensionsScreen} />
+        <Tab.Screen name="Settings"   component={SettingsScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );
