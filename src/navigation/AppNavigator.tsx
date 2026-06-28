@@ -71,7 +71,7 @@ export function AppNavigator() {
   const updateChecked = useRef(false);
 
   useEffect(() => {
-    if (!token || updateChecked.current) return;
+    if (updateChecked.current) return;
     updateChecked.current = true;
     checkForUpdate().then(update => {
       if (!update) return;
@@ -89,7 +89,7 @@ export function AppNavigator() {
         ],
       );
     });
-  }, [token]);
+  }, []);
 
   if (isLoading) {
     return (

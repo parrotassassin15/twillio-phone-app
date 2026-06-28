@@ -44,9 +44,9 @@ async function getOrCreateDeviceId(): Promise<string> {
   let id = await AsyncStorage.getItem(STORAGE_KEY);
   if (!id) {
     // Generate a random 16-char hex string as a stable device identifier
-    const bytes = new Uint8Array(8);
-    crypto.getRandomValues(bytes);
-    id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    id = Array.from({ length: 8 }, () =>
+      Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
+    ).join('');
     await AsyncStorage.setItem(STORAGE_KEY, id);
   }
   return id;

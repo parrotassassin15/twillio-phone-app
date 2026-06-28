@@ -58,7 +58,7 @@ export function LoginScreen() {
     setError(null);
     setMsLoading(true);
     try {
-      const url = `${Config.BASE_URL}/api/auth/microsoft?redirect_uri=lorikeet%3A%2F%2Fauth%2Fcallback`;
+      const url = `${Config.BASE_URL}/api/ms-sso?redirect_uri=lorikeet%3A%2F%2Fauth%2Fcallback`;
       await Linking.openURL(url);
     } catch {
       setError('Could not open Microsoft sign-in. Please try again.');
