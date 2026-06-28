@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../contexts/AuthContext';
 import { useAgent } from '../contexts/AgentContext';
+import { Config } from '../config';
 
 const C = {
   bg:     '#0a1628',
@@ -141,6 +142,11 @@ export function SettingsScreen() {
               ))}
             </View>
           )}
+        </Section>
+
+        {/* App version */}
+        <Section title="App Info">
+          <Row label="Version" value={`${Config.APP_VERSION_NAME} (build ${Config.APP_VERSION_CODE})`} icon="information-outline" />
         </Section>
 
         {/* Sign out */}

@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   View,
 } from 'react-native';
+import { checkForUpdate } from '../services/updateService';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -65,6 +68,28 @@ function MainTabs() {
 
 export function AppNavigator() {
   const { token, isLoading } = useAuth();
+  const updateChecked = useRef(false);
+
+  useEffect(() => {
+    if (!token || updateChecked.current) return;
+    updateChecked.current = true;
+    checkForUpdate().then(update => {
+      if (!update) return;
+      Alert.alert(
+        `Update Available — v${update.versionName}`,
+        update.releaseNotes
+          ? update.releaseNotes
+          : 'A new version of LS Phone is ready to install.',
+        [
+          { text: 'Later', style: 'cancel' },
+          {
+            text: 'Update Now',
+            onPress: () => Linking.openURL(update.apkUrl),
+          },
+        ],
+      );
+    });
+  }, [token]);
 
   if (isLoading) {
     return (

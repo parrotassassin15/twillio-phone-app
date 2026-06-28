@@ -1,6 +1,10 @@
 export const Config = {
   BASE_URL: 'https://lorikeetsecurity.com',
 
+  APP_VERSION_CODE: 3,
+  APP_VERSION_NAME: '1.1',
+  UPDATE_CHECK_URL: 'http://192.168.1.137:9001/version.json',
+
   CALLER_IDS: [
     { label: 'Toll-Free',  number: '+18886526479' },
     { label: 'Kissimmee', number: '+16892023940' },

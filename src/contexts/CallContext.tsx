@@ -121,21 +121,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     [stopRing, onCallStarted, onCallEnded],
   );
 
-  // ── Re-register device when agent identity is assigned ────────────────────
+  // ── Sync device ID and register once it's available ─────────────────────
 
   useEffect(() => {
     twilioSetDeviceId(deviceId);
     if (deviceId) {
-      // Re-register with the correct per-agent Twilio identity now that we have it
       registerDevice().catch(console.error);
     }
   }, [deviceId]);
 
-  // ── Initial device registration + incoming call listener ─────────────────
+  // ── Incoming call listener (no registration here — deviceId effect handles it) ──
 
   useEffect(() => {
-    registerDevice().catch(console.error);
-
     const offInvite = onCallInvite(invite => {
       setPendingInvite(invite);
       setStatus('incoming');

@@ -13,6 +13,10 @@ const voice = new Voice();
 let _token: string | null = null;
 let _tokenExpiresAt = 0;
 let _deviceId: string | null = null;
+let _tokenPromise: Promise<string> | null = null;
+let _registering = false;
+let _lastRegisterAttempt = 0;
+const MIN_REGISTER_INTERVAL_MS = 60_000;
 
 /** Called by CallContext once the AgentContext has assigned a device ID. */
 export function setDeviceId(id: string | null): void {
@@ -25,14 +29,33 @@ export function setDeviceId(id: string | null): void {
 
 async function getToken(): Promise<string> {
   if (_token && Date.now() < _tokenExpiresAt) return _token;
-  _token = await fetchAccessToken(_deviceId);
-  _tokenExpiresAt = Date.now() + 50 * 60 * 1000;
-  return _token;
+  if (_tokenPromise) return _tokenPromise;
+  _tokenPromise = fetchAccessToken(_deviceId)
+    .then(t => {
+      _token = t;
+      _tokenExpiresAt = Date.now() + 50 * 60 * 1000;
+      _tokenPromise = null;
+      return t;
+    })
+    .catch(err => {
+      _tokenPromise = null;
+      throw err;
+    });
+  return _tokenPromise;
 }
 
 export async function registerDevice(): Promise<void> {
-  const token = await getToken();
-  await voice.register(token);
+  if (_registering) return;
+  const now = Date.now();
+  if (_token && now - _lastRegisterAttempt < MIN_REGISTER_INTERVAL_MS) return;
+  _registering = true;
+  _lastRegisterAttempt = now;
+  try {
+    const token = await getToken();
+    await voice.register(token);
+  } finally {
+    _registering = false;
+  }
 }
 
 export async function unregisterDevice(): Promise<void> {

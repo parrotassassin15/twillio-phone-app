@@ -77,6 +77,8 @@ export function DialerScreen() {
   const [callerIdOpen, setCallerIdOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zeroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingExtRef = useRef('');
+  const prevStatusRef = useRef(status);
 
   const inCall = status === 'connected' || status === 'connecting';
 
@@ -90,6 +92,20 @@ export function DialerScreen() {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [status, callStartTime]);
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    if (prev !== 'connected' && status === 'connected' && pendingExtRef.current) {
+      const ext = pendingExtRef.current;
+      pendingExtRef.current = '';
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      for (let i = 0; i < ext.length; i++) {
+        timers.push(setTimeout(() => sendDigit(ext[i]), 1500 + i * 250));
+      }
+      return () => timers.forEach(clearTimeout);
+    }
+  }, [status, sendDigit]);
 
   const handleKey = useCallback(
     (digit: string) => {
@@ -108,8 +124,10 @@ export function DialerScreen() {
   }, [inCall]);
 
   const handleCall = useCallback(async () => {
-    const target = digits.trim();
+    const [mainPart, ...extParts] = digits.trim().split(',');
+    const target = mainPart.trim();
     if (!target) return;
+    pendingExtRef.current = extParts.join('').replace(/[^0-9*#]/g, '');
     try {
       await dial(target);
     } catch (err: any) {
@@ -117,8 +135,12 @@ export function DialerScreen() {
     }
   }, [digits, dial]);
 
-  const displayNumber = inCall ? formatPhone(remoteNumber) : digits ? formatPhone(digits) : '';
-  const contactName   = inCall ? resolveContact(remoteNumber) : resolveContact(digits);
+  const rawDisplay    = inCall ? remoteNumber : digits;
+  const commaIdx      = rawDisplay.indexOf(',');
+  const mainRaw       = commaIdx >= 0 ? rawDisplay.slice(0, commaIdx) : rawDisplay;
+  const extRaw        = commaIdx >= 0 ? rawDisplay.slice(commaIdx + 1) : '';
+  const displayNumber = mainRaw ? formatPhone(mainRaw) : '';
+  const contactName   = resolveContact(mainRaw);
   const statusLabel   =
     status === 'connecting' ? `Calling ${formatPhone(remoteNumber)}…`
     : status === 'connected' ? 'Connected'
@@ -160,10 +182,22 @@ export function DialerScreen() {
           {contactName ? <Text style={styles.contactName}>{contactName}</Text> : null}
           <Text style={[styles.number, !displayNumber && styles.numberEmpty]}>
             {displayNumber || 'Enter a number'}
+            {extRaw ? <Text style={styles.extPart}>{` ,${extRaw}`}</Text> : null}
           </Text>
           {status === 'connected' && <Text style={styles.timer}>{formatTimer(elapsed)}</Text>}
           {statusLabel ? <Text style={styles.statusLabel}>{statusLabel}</Text> : null}
         </View>
+
+        {/* Extension separator */}
+        {!inCall && digits && !digits.includes(',') && (
+          <TouchableOpacity
+            style={styles.extChip}
+            onPress={() => setDigits(d => d + ',')}
+            accessibilityLabel="Add extension">
+            <Icon name="dialpad" size={11} color="#00b8ff" />
+            <Text style={styles.extChipText}>+ ext</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Keypad — flex: 1 so it fills available space */}
         <View style={styles.pad}>
@@ -215,9 +249,9 @@ export function DialerScreen() {
 
           {!inCall ? (
             <TouchableOpacity
-              style={[styles.callBtn, !digits && styles.callBtnDisabled]}
+              style={[styles.callBtn, !mainRaw.trim() && styles.callBtnDisabled]}
               onPress={handleCall}
-              disabled={!digits}
+              disabled={!mainRaw.trim()}
               accessibilityLabel="Call">
               <Icon name="phone" size={28} color={COLORS.text} />
             </TouchableOpacity>
@@ -296,6 +330,19 @@ const styles = StyleSheet.create({
   contactName: { color: COLORS.accent, fontSize: 12, fontWeight: '600', marginBottom: 2 },
   number: { color: COLORS.text, fontSize: 26, fontWeight: '700', letterSpacing: 2, fontFamily: 'monospace' },
   numberEmpty: { color: COLORS.muted, fontSize: 14, fontWeight: '400', letterSpacing: 0 },
+  extPart: { color: '#00b8ff', fontSize: 20, fontWeight: '500', letterSpacing: 1 },
+  extChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,184,255,0.12)',
+    marginBottom: 6,
+  },
+  extChipText: { color: '#00b8ff', fontSize: 11, fontWeight: '600' },
   timer: { color: '#ffc107', fontSize: 13, fontWeight: '600', marginTop: 2 },
   statusLabel: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
 

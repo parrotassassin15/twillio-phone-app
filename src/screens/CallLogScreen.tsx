@@ -59,11 +59,12 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-type DirectionFilter = '' | 'inbound' | 'outbound';
+type CallFilter = '' | 'inbound' | 'outbound' | 'extensions';
 
 function CallRow({ item, onPress }: { item: CallRecord; onPress: (num: string) => void }) {
   const num = item.direction === 'outbound' ? item.to : item.from;
   const contact = resolveContact(num);
+  const ext = Config.EXTENSIONS.find(e => e.number.replace(/[^\d]/g, '') === num.replace(/[^\d]/g, ''));
   const isMissed =
     item.status === 'no-answer' ||
     item.status === 'busy' ||
@@ -109,6 +110,11 @@ function CallRow({ item, onPress }: { item: CallRecord; onPress: (num: string) =
           <View style={[styles.badge, { backgroundColor: badgeColor.bg }]}>
             <Text style={[styles.badgeText, { color: badgeColor.text }]}>{item.status}</Text>
           </View>
+          {ext && (
+            <View style={[styles.badge, { backgroundColor: 'rgba(186,86,99,0.1)' }]}>
+              <Text style={[styles.badgeText, { color: COLORS.accent }]}>ext {ext.ext}</Text>
+            </View>
+          )}
           {item.duration > 0 && (
             <Text style={styles.metaText}>{formatDuration(item.duration)}</Text>
           )}
@@ -120,19 +126,65 @@ function CallRow({ item, onPress }: { item: CallRecord; onPress: (num: string) =
   );
 }
 
+function ExtensionSummary({ calls }: { calls: CallRecord[] }) {
+  const extData = Config.EXTENSIONS.map(ext => {
+    const extDigits = ext.number.replace(/[^\d]/g, '');
+    const extCalls = calls.filter(c => {
+      const num = (c.direction === 'outbound' ? c.to : c.from).replace(/[^\d]/g, '');
+      return num === extDigits;
+    });
+    return { ...ext, count: extCalls.length, totalDuration: extCalls.reduce((s, c) => s + (c.duration ?? 0), 0) };
+  }).filter(e => e.count > 0);
+
+  if (extData.length === 0) return null;
+
+  return (
+    <View style={styles.extCard}>
+      <View style={styles.extCardHeader}>
+        <Icon name="headset" size={13} color={COLORS.accent} />
+        <Text style={styles.extCardTitle}>Extensions Dialed</Text>
+      </View>
+      {extData.map((ext, i) => (
+        <View key={ext.ext} style={[styles.extCardRow, i < extData.length - 1 && styles.extCardRowBorder]}>
+          <View style={styles.extBadgeBox}>
+            <Text style={styles.extBadgeBoxText}>{ext.ext}</Text>
+          </View>
+          <Text style={styles.extCardName}>{ext.name}</Text>
+          <View style={styles.extCardStats}>
+            <Text style={styles.extCardCount}>{ext.count}</Text>
+            <Text style={styles.extCardCountLabel}> call{ext.count !== 1 ? 's' : ''}</Text>
+            {ext.totalDuration > 0 && (
+              <Text style={styles.extCardDuration}>  {formatDuration(ext.totalDuration)}</Text>
+            )}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function CallLogScreen() {
   const { dial, status: callStatus } = useCall();
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<DirectionFilter>('');
+  const [filter, setFilter] = useState<CallFilter>('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchCallLogs({ limit: 50, direction: filter });
-      setCalls(data);
+      const direction = filter === 'extensions' ? '' : filter;
+      const data = await fetchCallLogs({ limit: 50, direction });
+      if (filter === 'extensions') {
+        const extSet = new Set(Config.EXTENSIONS.map(e => e.number.replace(/[^\d]/g, '')));
+        setCalls(data.filter(c => {
+          const num = (c.direction === 'outbound' ? c.to : c.from).replace(/[^\d]/g, '');
+          return extSet.has(num);
+        }));
+      } else {
+        setCalls(data);
+      }
     } catch (err: any) {
       setError(err?.message ?? 'Failed to load');
     } finally {
@@ -152,10 +204,11 @@ export function CallLogScreen() {
     [dial, callStatus],
   );
 
-  const FILTERS: { label: string; value: DirectionFilter }[] = [
+  const FILTERS: { label: string; value: CallFilter }[] = [
     { label: 'All', value: '' },
     { label: 'Inbound', value: 'inbound' },
     { label: 'Outbound', value: 'outbound' },
+    { label: 'Extensions', value: 'extensions' },
   ];
 
   return (
@@ -195,13 +248,16 @@ export function CallLogScreen() {
           <Text style={styles.emptyText}>No calls found</Text>
         </View>
       ) : (
-        <FlatList
-          data={calls}
-          keyExtractor={item => item.sid}
-          renderItem={({ item }) => <CallRow item={item} onPress={handleDial} />}
-          contentContainerStyle={styles.list}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
+        <>
+          {filter === 'extensions' && <ExtensionSummary calls={calls} />}
+          <FlatList
+            data={calls}
+            keyExtractor={item => item.sid}
+            renderItem={({ item }) => <CallRow item={item} onPress={handleDial} />}
+            contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+          />
+        </>
       )}
     </SafeAreaView>
   );
@@ -264,4 +320,46 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   retryText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  extCard: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  extCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  extCardTitle: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  extCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  extCardRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(42,63,95,0.5)' },
+  extBadgeBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 7,
+    backgroundColor: 'rgba(186,86,99,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  extBadgeBoxText: { color: COLORS.accent, fontWeight: '700', fontSize: 11, fontFamily: 'monospace' },
+  extCardName: { flex: 1, color: COLORS.text, fontSize: 12, fontWeight: '500' },
+  extCardStats: { flexDirection: 'row', alignItems: 'center' },
+  extCardCount: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  extCardCountLabel: { color: COLORS.muted, fontSize: 11 },
+  extCardDuration: { color: COLORS.muted, fontSize: 11 },
 });
