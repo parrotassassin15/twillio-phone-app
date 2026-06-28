@@ -1,6 +1,6 @@
 # Lorikeet Softphone
 
-A React Native Android/iOS softphone built on the [Twilio Voice SDK](https://www.twilio.com/docs/voice/sdks/javascript). Supports outbound and inbound calls, call transfer, team extensions, call log, leads list, and SMS conversations — secured with per-user JWT authentication against your own backend.
+A React Native Android softphone built on the [Twilio Voice React Native SDK](https://github.com/twilio/twilio-voice-react-native). Supports outbound and inbound calls, call transfer, team extensions, call log, and a contacts directory — secured with per-user JWT authentication against your own backend.
 
 ---
 
@@ -8,16 +8,17 @@ A React Native Android/iOS softphone built on the [Twilio Voice SDK](https://www
 
 | Feature | Details |
 |---------|---------|
-| **Authentication** | Email + password login; 7-day JWT sessions stored on-device |
-| **Voice calls** | Outbound + inbound via Twilio Voice SDK |
+| **Authentication** | Email + password login; JWT sessions stored on-device |
+| **Voice calls** | Outbound + inbound via Twilio Voice React Native SDK |
 | **Caller ID selection** | Pick which of your numbers shows on outbound calls |
 | **Incoming call overlay** | Animated modal with accept / reject |
 | **Mute / DTMF** | Mute mic, send tones during a live call |
 | **Call transfer** | Blind-transfer to any number or a team extension |
 | **Call log** | Full history with inbound/outbound/missed icons, tap to redial |
+| **Contacts** | Directory view with tap-to-call |
 | **Extensions** | Quick-dial team members; one-tap transfer during an active call |
-| **Leads** | View inbound leads, tap to call |
-| **SMS** | Conversation list, threaded view, send messages |
+| **Settings** | Configure caller ID, backend URL, and preferences |
+| **Agent presence** | Registers device identity with your backend on login |
 
 ---
 
@@ -198,13 +199,9 @@ src/
 │   ├── LoginScreen.tsx
 │   ├── DialerScreen.tsx
 │   ├── CallLogScreen.tsx
+│   ├── ContactsScreen.tsx
 │   ├── ExtensionsScreen.tsx
-│   ├── LeadsScreen.tsx
-│   ├── SMSScreen.tsx
-│   └── SMSThreadScreen.tsx
-├── components/
-│   ├── IncomingCallOverlay.tsx
-│   └── TransferModal.tsx
+│   └── SettingsScreen.tsx
 └── services/
     ├── authToken.ts               # Module-level JWT store (used by api.ts)
     ├── api.ts                     # REST calls to your backend
@@ -226,7 +223,7 @@ backend/                           # PHP reference implementations (public)
 3. If no JWT or expired → shows the login screen
 4. User enters email + password → `POST /api/auth` → JWT saved to AsyncStorage
 5. All subsequent API calls send `Authorization: Bearer <jwt>`
-6. Sign out via the Extensions tab → clears the JWT and returns to login
+6. Sign out via the Settings tab → clears the JWT and returns to login
 
 ---
 
