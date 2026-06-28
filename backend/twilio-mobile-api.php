@@ -3,7 +3,7 @@
  * Twilio Mobile API
  * POST /api/twilio-mobile-api
  *
- * Authentication: Authorization: Bearer <MOBILE_API_KEY>
+ * Authentication: Authorization: Bearer <JWT>  (issued by /api/auth)
  *
  * Supported actions (POST body field "action"):
  *   call_logs          — Call history from Twilio
@@ -25,21 +25,34 @@
  */
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/vendor/autoload.php';
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+
 // Load credentials from environment (or require your own creds file):
-$mobile_api_key               = getenv('MOBILE_API_KEY');
 $twilio_account_sid           = getenv('TWILIO_ACCOUNT_SID');
 $twilio_auth_token            = getenv('TWILIO_AUTH_TOKEN');
 $twilio_messaging_service_sid = getenv('TWILIO_MESSAGING_SERVICE_SID');
+$jwt_secret                   = getenv('JWT_SECRET');
 
-// ── Bearer token auth ─────────────────────────────────────────────────────
+// ── JWT auth ──────────────────────────────────────────────────────────────
 
-$authHeader  = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-$providedKey = '';
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+$jwt        = '';
 if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
-    $providedKey = trim($m[1]);
+    $jwt = trim($m[1]);
 }
 
-if (empty($mobile_api_key) || empty($providedKey) || !hash_equals($mobile_api_key, $providedKey)) {
+if (empty($jwt) || empty($jwt_secret)) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized']);
+    exit;
+}
+
+try {
+    $decoded = JWT::decode($jwt, new Key($jwt_secret, 'HS256'));
+    $auth_user_id = $decoded->sub ?? null;
+} catch (\Exception $e) {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
     exit;

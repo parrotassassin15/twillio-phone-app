@@ -60,6 +60,9 @@ yarn-error.log
 **/Pods/
 /vendor/bundle/
 
+# Private backend — auth endpoint contains prod DB credentials and user table queries
+backend/auth.php
+
 # Temporary files created by Metro to check the health of the file watcher
 .metro-health-check*
 

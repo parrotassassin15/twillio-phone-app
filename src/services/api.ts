@@ -1,4 +1,5 @@
 import { Config } from '../config';
+import { getAuthToken } from './authToken';
 
 type FetchOpts = {
   method?: 'GET' | 'POST';
@@ -19,13 +20,16 @@ async function request<T>(path: string, opts: FetchOpts = {}): Promise<T> {
     }
   }
 
+  const token = getAuthToken();
   const resp = await fetch(`${Config.BASE_URL}${path}`, {
     method: fetchBody ? 'POST' : method,
-    headers: {
-      Authorization: `Bearer ${Config.MOBILE_API_KEY}`,
-    },
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: fetchBody,
   });
+
+  if (resp.status === 401) {
+    throw new Error('Session expired. Please sign in again.');
+  }
 
   if (!resp.ok) {
     throw new Error(`HTTP ${resp.status}`);
@@ -36,10 +40,17 @@ async function request<T>(path: string, opts: FetchOpts = {}): Promise<T> {
 
 // ── Token ──────────────────────────────────────────────────────────────────
 
-export async function fetchAccessToken(): Promise<string> {
-  const data = await request<{ success: boolean; token: string; error?: string }>(
-    '/api/twilio-mobile-token',
-  );
+/**
+ * Fetch a Twilio Access Token for this device.
+ * Pass the device_id so the server can look up the unique agent identity
+ * assigned by the Agent Control API.  Without a device_id the server falls
+ * back to the shared 'lorikeet_agent' identity.
+ */
+export async function fetchAccessToken(deviceId?: string | null): Promise<string> {
+  const path = deviceId
+    ? `/api/twilio-mobile-token?device_id=${encodeURIComponent(deviceId)}`
+    : '/api/twilio-mobile-token';
+  const data = await request<{ success: boolean; token: string; identity?: string; error?: string }>(path);
   if (!data.success || !data.token) {
     throw new Error(data.error ?? 'Token request failed');
   }

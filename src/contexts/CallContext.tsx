@@ -6,7 +6,21 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { PermissionsAndroid, Platform } from 'react-native';
 import Sound from 'react-native-sound';
+
+async function ensureMicPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  const granted = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    {
+      title: 'Microphone Permission',
+      message: 'LS Phone needs microphone access to make and receive calls.',
+      buttonPositive: 'Allow',
+    },
+  );
+  return granted === PermissionsAndroid.RESULTS.GRANTED;
+}
 import {
   Call,
   CallInvite,
@@ -18,9 +32,11 @@ import {
   onCallInvite,
   onCancelledCallInvite,
   registerDevice,
+  setDeviceId as twilioSetDeviceId,
 } from '../services/twilioService';
 import { transferCall } from '../services/api';
 import { Config } from '../config';
+import { useAgent } from './AgentContext';
 
 Sound.setCategory('PlayAndRecord');
 
@@ -47,6 +63,8 @@ type CallContextValue = {
 const CallContext = createContext<CallContextValue | null>(null);
 
 export function CallProvider({ children }: { children: React.ReactNode }) {
+  const { deviceId, onCallStarted, onCallEnded } = useAgent();
+
   const [status, setStatus] = useState<Status>('idle');
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [pendingInvite, setPendingInvite] = useState<CallInvite | null>(null);
@@ -81,12 +99,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       call.on(Call.Event.Connected, () => {
         setStatus('connected');
         setCallStartTime(Date.now());
+        const sid = getCallSid(call);
+        if (sid) onCallStarted(sid).catch(() => {});
       });
       call.on(Call.Event.ConnectFailure, () => {
         setStatus('idle');
         setActiveCall(null);
         setCallStartTime(null);
         setRemoteNumber('');
+        onCallEnded().catch(() => {});
       });
       call.on(Call.Event.Disconnected, () => {
         setStatus('idle');
@@ -95,12 +116,23 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         setCallStartTime(null);
         setRemoteNumber('');
         stopRing();
+        onCallEnded().catch(() => {});
       });
     },
-    [stopRing],
+    [stopRing, onCallStarted, onCallEnded],
   );
 
-  // ── Device registration + incoming call listener ──────────────────────────
+  // ── Re-register device when agent identity is assigned ────────────────────
+
+  useEffect(() => {
+    twilioSetDeviceId(deviceId);
+    if (deviceId) {
+      // Re-register with the correct per-agent Twilio identity now that we have it
+      registerDevice().catch(console.error);
+    }
+  }, [deviceId]);
+
+  // ── Initial device registration + incoming call listener ─────────────────
 
   useEffect(() => {
     registerDevice().catch(console.error);
@@ -131,6 +163,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const dial = useCallback(
     async (to: string) => {
       if (status !== 'idle') return;
+      const hasMic = await ensureMicPermission();
+      if (!hasMic) throw new Error('Microphone permission denied');
       setStatus('connecting');
       setRemoteNumber(to);
       try {
@@ -150,6 +184,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const acceptIncoming = useCallback(async () => {
     if (!pendingInvite) return;
+    await ensureMicPermission();
     stopRing();
     const call = await pendingInvite.accept();
     setPendingInvite(null);

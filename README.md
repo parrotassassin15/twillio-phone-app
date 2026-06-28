@@ -1,6 +1,6 @@
-# Twilio Softphone — Android
+# Lorikeet Softphone
 
-A React Native Android softphone built on the [Twilio Voice SDK](https://www.twilio.com/docs/voice/sdks/javascript). Supports outbound and inbound calls, call transfer, team extensions, call log, leads list, and SMS conversations — all authenticated against your own backend.
+A React Native Android/iOS softphone built on the [Twilio Voice SDK](https://www.twilio.com/docs/voice/sdks/javascript). Supports outbound and inbound calls, call transfer, team extensions, call log, leads list, and SMS conversations — secured with per-user JWT authentication against your own backend.
 
 ---
 
@@ -8,6 +8,7 @@ A React Native Android softphone built on the [Twilio Voice SDK](https://www.twi
 
 | Feature | Details |
 |---------|---------|
+| **Authentication** | Email + password login; 7-day JWT sessions stored on-device |
 | **Voice calls** | Outbound + inbound via Twilio Voice SDK |
 | **Caller ID selection** | Pick which of your numbers shows on outbound calls |
 | **Incoming call overlay** | Animated modal with accept / reject |
@@ -26,32 +27,78 @@ A React Native Android softphone built on the [Twilio Voice SDK](https://www.twi
 - **Java** 17 (React Native requires Java 17; newer major versions may break Gradle)
 - **Android Studio** + Android SDK (API 31+)
 - A connected Android device or emulator
-- A backend that exposes the two API endpoints described below
+- A backend that exposes the endpoints described below
 
 ---
 
 ## 1 — Backend setup
 
-This app expects two endpoints on your server, authenticated with a shared Bearer token:
+### Endpoints
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/twilio-mobile-token` | GET | Returns a Twilio Access Token (JWT with Voice grant) |
+| `/api/auth` | POST | Login — returns a signed JWT |
+| `/api/twilio-mobile-token` | GET | Returns a Twilio Access Token (Voice grant) |
 | `/api/twilio-mobile-api` | POST | Call logs, SMS, leads, call transfer |
+| `/api/agent-control` | POST | Agent registration and presence heartbeat |
 
-Reference implementations in PHP are included in [`backend/`](backend/):
-- `twilio-mobile-token.php`
-- `twilio-mobile-api.php`
+Reference implementations in PHP are included in [`backend/`](backend/) for the Twilio endpoints. The auth endpoint (`/api/auth`) is **not** included in this repository; it connects directly to your production user database and should be kept private.
 
-Both read a `$mobile_api_key` variable from your credentials file. Generate one:
+### Auth endpoint (implement privately)
 
-```bash
-openssl rand -hex 32
+The login endpoint accepts:
+```
+POST /api/auth
+action=login&email=user@example.com&password=secret
+```
+
+On success it returns:
+```json
+{ "success": true, "token": "<hs256-jwt>" }
+```
+
+The JWT payload must include at minimum: `sub` (user id), `email`, `name`, `exp`.
+
+Sign with `HS256` using a `JWT_SECRET` environment variable shared between `/api/auth` and the other mobile endpoints.
+
+### User credentials table
+
+Create a `mobile_credentials` table in your production database for users authorized to access the softphone:
+
+```sql
+CREATE TABLE mobile_credentials (
+  id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  email         VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name     VARCHAR(255) DEFAULT NULL,
+  active        TINYINT(1)  NOT NULL DEFAULT 1,
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_login    TIMESTAMP   NULL DEFAULT NULL,
+  UNIQUE KEY uq_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+Add authorized users:
+```sql
+-- Generate the hash in PHP: echo password_hash('password', PASSWORD_BCRYPT);
+INSERT INTO mobile_credentials (email, password_hash, full_name)
+VALUES ('agent@yourcompany.com', '$2y$12$...', 'Agent Name');
+```
+
+### Environment variables
+
+```
+JWT_SECRET=<64-char random hex>   # openssl rand -hex 32
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_API_KEY_SID=SK...
+TWILIO_API_KEY_SECRET=...
+TWILIO_TWIML_APP_SID=AP...
 ```
 
 ### Twilio TwiML App
 
-Your TwiML App's Voice URL must `<Dial>` to a `<Client>` whose identity matches `TWILIO_CLIENT_IDENTITY` in your config (default: `softphone_agent`). The mobile app registers under the same identity so inbound calls ring both the browser and the device simultaneously.
+Your TwiML App's Voice URL must `<Dial>` to a `<Client>` identity that matches the agent identity assigned by the Agent Control API. The app registers each device on first launch and re-registers with the correct identity on every login.
 
 ### Optional: background incoming calls (FCM)
 
@@ -61,7 +108,7 @@ To receive calls when the app is **in the background**:
 2. Download `google-services.json` → `android/app/google-services.json`.
 3. Follow the [`@react-native-firebase/messaging`](https://rnfirebase.io/messaging/usage) guide.
 4. In Twilio console → Voice → Push Credentials → create an FCM credential.
-5. Set `$twilio_push_credential_sid` in your backend credentials.
+5. Set `TWILIO_PUSH_CREDENTIAL_SID` in your backend environment.
 
 Without FCM the app rings normally when it is open in the foreground.
 
@@ -75,9 +122,6 @@ Edit [src/config/index.ts](src/config/index.ts):
 export const Config = {
   /** Your backend base URL (no trailing slash) */
   BASE_URL: 'https://your-server.example.com',
-
-  /** Must match $mobile_api_key in your backend */
-  MOBILE_API_KEY: process.env.MOBILE_API_KEY ?? 'REPLACE_ME',
 
   /** Caller ID numbers shown in the picker */
   CALLER_IDS: [
@@ -99,8 +143,6 @@ export const Config = {
   } as Record<string, string>,
 };
 ```
-
-For production builds, supply `MOBILE_API_KEY` via an environment variable or `react-native-config`.
 
 ---
 
@@ -146,10 +188,14 @@ Place your ringtone at `android/app/src/main/res/raw/incoming_call.mp3` (note un
 
 ```
 src/
-├── config/index.ts           # All configurable values — edit this first
-├── contexts/CallContext.tsx  # Global call state (active call, mute, timer…)
-├── navigation/AppNavigator.tsx
+├── config/index.ts                # All configurable values — edit this first
+├── contexts/
+│   ├── AuthContext.tsx            # Login / logout / JWT persistence
+│   ├── CallContext.tsx            # Global call state (active call, mute, timer…)
+│   └── AgentContext.tsx           # Agent registration and presence
+├── navigation/AppNavigator.tsx    # Auth gate → login or tab bar
 ├── screens/
+│   ├── LoginScreen.tsx
 │   ├── DialerScreen.tsx
 │   ├── CallLogScreen.tsx
 │   ├── ExtensionsScreen.tsx
@@ -160,13 +206,27 @@ src/
 │   ├── IncomingCallOverlay.tsx
 │   └── TransferModal.tsx
 └── services/
-    ├── api.ts               # REST calls to your backend
-    └── twilioService.ts     # @twilio/voice-react-native-sdk wrapper
+    ├── authToken.ts               # Module-level JWT store (used by api.ts)
+    ├── api.ts                     # REST calls to your backend
+    ├── agentControl.ts            # Agent presence API
+    └── twilioService.ts           # @twilio/voice-react-native-sdk wrapper
 
-backend/
-├── twilio-mobile-token.php  # Token endpoint (PHP reference implementation)
-└── twilio-mobile-api.php    # API endpoint  (PHP reference implementation)
+backend/                           # PHP reference implementations (public)
+├── twilio-mobile-token.php
+└── twilio-mobile-api.php
+# backend/auth.php is private — not included in this repository
 ```
+
+---
+
+## Auth flow
+
+1. App launches → checks AsyncStorage for a saved JWT
+2. If the JWT exists and is not expired → goes straight to the dialer
+3. If no JWT or expired → shows the login screen
+4. User enters email + password → `POST /api/auth` → JWT saved to AsyncStorage
+5. All subsequent API calls send `Authorization: Bearer <jwt>`
+6. Sign out via the Extensions tab → clears the JWT and returns to login
 
 ---
 

@@ -7,16 +7,25 @@
 import { Voice, Call, CallInvite } from '@twilio/voice-react-native-sdk';
 import { fetchAccessToken } from './api';
 
-export type { Call, CallInvite };
+export { Call, CallInvite };
 
 const voice = new Voice();
 let _token: string | null = null;
 let _tokenExpiresAt = 0;
+let _deviceId: string | null = null;
+
+/** Called by CallContext once the AgentContext has assigned a device ID. */
+export function setDeviceId(id: string | null): void {
+  if (id !== _deviceId) {
+    _deviceId = id;
+    _token = null; // invalidate cached token — identity may have changed
+    _tokenExpiresAt = 0;
+  }
+}
 
 async function getToken(): Promise<string> {
   if (_token && Date.now() < _tokenExpiresAt) return _token;
-  _token = await fetchAccessToken();
-  // Tokens are valid for 1 hour; refresh after 50 minutes.
+  _token = await fetchAccessToken(_deviceId);
   _tokenExpiresAt = Date.now() + 50 * 60 * 1000;
   return _token;
 }
